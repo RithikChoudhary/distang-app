@@ -7,9 +7,9 @@ import * as SecureStore from 'expo-secure-store';
  */
 
 const DEV_GAMES_URL = 'http://192.168.68.110:4000';
-const PROD_GAMES_URL = 'https://games.codex-couples.com'; // Replace with your production URL
+const PROD_GAMES_URL = 'https://games.distang.com'; // Production Games API
 
-const USE_PRODUCTION = false;
+const USE_PRODUCTION = true; // Using production backend
 
 export const GAMES_API_URL = USE_PRODUCTION ? PROD_GAMES_URL : DEV_GAMES_URL;
 

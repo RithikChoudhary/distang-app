@@ -39,10 +39,10 @@ import {
  * - Mac/Linux: Run 'ifconfig' or 'ip addr'
  */
 const DEV_API_URL = 'http://192.168.68.110:3000'; // Update with YOUR local IP
-const PROD_API_URL = 'https://YOUR-RAILWAY-URL.up.railway.app'; // Replace with your Railway URL
+const PROD_API_URL = 'https://backend.distang.com'; // Production API
 
 // For testing with real users, you can force production URL:
-const USE_PRODUCTION = false; // Set to true when testing with real users
+const USE_PRODUCTION = true; // Using production backend
 
 export const API_BASE_URL = USE_PRODUCTION ? PROD_API_URL : (__DEV__ ? DEV_API_URL : PROD_API_URL);
 
