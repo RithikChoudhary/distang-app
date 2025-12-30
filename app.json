@@ -54,13 +54,10 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_PHONE_STATE",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
         "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
@@ -87,8 +84,7 @@
         {
           "microphonePermission": "Allow Distang to access your microphone for voice messages."
         }
-      ],
-      "./plugins/call-detection/withCallDetection"
+      ]
     ],
     "scheme": "distang",
     "extra": {
