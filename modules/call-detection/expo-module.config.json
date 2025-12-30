@@ -1,0 +1,10 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["com.codex.calldetection.CallDetectionModule"]
+  },
+  "ios": {
+    "modules": ["CallDetectionModule"]
+  }
+}
+
