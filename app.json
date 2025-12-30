@@ -27,7 +27,13 @@
         "NSLocationWhenInUseUsageDescription": "Allow location access to share your location with your partner.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow background location access to keep sharing your location with your partner.",
         "NSMicrophoneUsageDescription": "Allow microphone access for voice messages.",
-        "UIBackgroundModes": ["voip", "audio", "location", "fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "voip",
+          "audio",
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -54,7 +60,9 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO",
         "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
@@ -85,7 +93,7 @@
     "scheme": "distang",
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "a17c96d1-979e-41fb-80c1-d94099f187d6"
       }
     },
     "updates": {
@@ -93,6 +101,7 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "owner": "burnts-organization"
   }
 }
