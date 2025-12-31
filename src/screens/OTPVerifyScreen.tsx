@@ -120,7 +120,7 @@ export const OTPVerifyScreen: React.FC = () => {
 
       if (response.success && response.data) {
         setUser(response.data.user);
-        setToken(response.data.token);
+        await setToken(response.data.token); // Must await to ensure token is saved before navigation
         
         // Navigate based on profile completion
         if (type === 'signup' || !response.data.user.isProfileComplete) {
