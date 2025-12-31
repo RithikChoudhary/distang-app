@@ -113,12 +113,17 @@ export const OnboardingScreen: React.FC = () => {
   const handleComplete = async () => {
     setLoading(true);
     try {
-      // Upload profile photo if selected
+      // Upload profile photo if selected (gracefully handle failure)
       let uploadedProfilePhoto = null;
       if (profilePhoto) {
-        const response = await userApi.uploadProfilePhoto(profilePhoto);
-        if (response.success) {
-          uploadedProfilePhoto = response.data?.profilePhoto;
+        try {
+          const response = await userApi.uploadProfilePhoto(profilePhoto);
+          if (response.success) {
+            uploadedProfilePhoto = response.data?.profilePhoto;
+          }
+        } catch (photoError) {
+          console.warn('Profile photo upload failed, continuing without photo:', photoError);
+          // Continue without photo - user can add it later
         }
       }
 
