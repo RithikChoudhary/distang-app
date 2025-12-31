@@ -19,7 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { userApi, consentApi, coupleApi, API_BASE_URL } from '../services/api';
+import { userApi, consentApi, coupleApi, API_BASE_URL, getMediaUrl } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 import { typography, spacing, borderRadius, shadows } from '../utils/theme';
 
@@ -170,7 +170,7 @@ export const SettingsScreen: React.FC = () => {
           <TouchableOpacity style={styles.profileCard} onPress={handleChangePhoto}>
             {user?.profilePhoto ? (
               <Image
-                source={{ uri: `${API_BASE_URL}${user.profilePhoto}` }}
+                source={{ uri: getMediaUrl(user.profilePhoto) }}
                 style={styles.profilePhoto}
               />
             ) : (

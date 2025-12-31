@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import { chatApi, questionApi, API_BASE_URL, QuestionPrompt, QuestionAnswer as QAType } from '../services/api';
+import { chatApi, questionApi, API_BASE_URL, getMediaUrl, QuestionPrompt, QuestionAnswer as QAType } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { ChatMessage } from '../types';
 import { colors as staticColors, typography, spacing, borderRadius, shadows } from '../utils/theme';
@@ -296,7 +296,7 @@ export const ChatScreen: React.FC = () => {
       });
       
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: `${API_BASE_URL}${audioPath}` },
+        { uri: getMediaUrl(audioPath) || '' },
         { shouldPlay: true }
       );
       
@@ -427,7 +427,7 @@ export const ChatScreen: React.FC = () => {
         return (
           <TouchableOpacity onPress={() => {/* TODO: Full screen view */}}>
             <Image 
-              source={{ uri: `${API_BASE_URL}${imagePath}` }}
+              source={{ uri: getMediaUrl(imagePath) }}
               style={styles.messageImage}
               resizeMode="cover"
             />
@@ -608,7 +608,7 @@ export const ChatScreen: React.FC = () => {
           <View style={styles.headerNameRow}>
             {partner.profilePhoto ? (
               <Image
-                source={{ uri: `${API_BASE_URL}${partner.profilePhoto}` }}
+                source={{ uri: getMediaUrl(partner.profilePhoto) }}
                 style={styles.headerAvatar}
               />
             ) : (

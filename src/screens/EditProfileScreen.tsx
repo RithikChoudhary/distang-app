@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../store/authStore';
-import { userApi, API_BASE_URL } from '../services/api';
+import { userApi, API_BASE_URL, getMediaUrl } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 import { typography, spacing, borderRadius, shadows } from '../utils/theme';
 
@@ -118,7 +118,7 @@ export const EditProfileScreen: React.FC = () => {
               </View>
             ) : user?.profilePhoto ? (
               <Image
-                source={{ uri: `${API_BASE_URL}${user.profilePhoto}` }}
+                source={{ uri: getMediaUrl(user.profilePhoto) }}
                 style={styles.profilePhoto}
               />
             ) : (

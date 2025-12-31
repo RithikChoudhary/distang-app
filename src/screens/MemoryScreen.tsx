@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { memoryApi, API_BASE_URL } from '../services/api';
+import { memoryApi, API_BASE_URL, getMediaUrl } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { Memory } from '../types';
 import { Button } from '../components';
@@ -298,9 +298,7 @@ export const MemoryScreen: React.FC = () => {
   };
 
   const renderMemoryCard = ({ item }: { item: Memory }) => {
-    const imageUrl = item.imagePath.startsWith('http')
-      ? item.imagePath
-      : `${API_BASE_URL}${item.imagePath}`;
+    const imageUrl = getMediaUrl(item.imagePath);
     
     const isMyMemory = item.uploadedBy.uniqueId === user?.uniqueId;
     
@@ -380,9 +378,7 @@ export const MemoryScreen: React.FC = () => {
                 >
                   <Image 
                     source={{ 
-                      uri: memory.imagePath.startsWith('http')
-                        ? memory.imagePath
-                        : `${API_BASE_URL}${memory.imagePath}`
+                      uri: getMediaUrl(memory.imagePath)
                     }} 
                     style={styles.timelineImage} 
                   />
@@ -693,9 +689,7 @@ export const MemoryScreen: React.FC = () => {
             <View style={styles.viewModalContent}>
               <Image
                 source={{
-                  uri: selectedMemory.imagePath.startsWith('http')
-                    ? selectedMemory.imagePath
-                    : `${API_BASE_URL}${selectedMemory.imagePath}`,
+                  uri: getMediaUrl(selectedMemory.imagePath),
                 }}
                 style={styles.viewModalImage}
                 resizeMode="contain"

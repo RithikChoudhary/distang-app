@@ -46,6 +46,21 @@ const USE_PRODUCTION = true; // Using production backend
 
 export const API_BASE_URL = USE_PRODUCTION ? PROD_API_URL : (__DEV__ ? DEV_API_URL : PROD_API_URL);
 
+/**
+ * Get full media URL - handles both Cloudinary URLs and relative paths
+ * @param url - Either a full URL (Cloudinary) or a relative path (/uploads/...)
+ * @returns Full URL ready for use in Image components
+ */
+export const getMediaUrl = (url: string | undefined | null): string | undefined => {
+  if (!url) return undefined;
+  // If it's already a full URL (Cloudinary, etc.), return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  // Otherwise, prepend the API base URL
+  return `${API_BASE_URL}${url}`;
+};
+
 // API timeout (30 seconds for development, 15 for production)
 const API_TIMEOUT = __DEV__ ? 30000 : 15000;
 

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { userApi, API_BASE_URL } from '../services/api';
+import { userApi, API_BASE_URL, getMediaUrl } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
 import { typography, spacing, borderRadius, shadows } from '../utils/theme';
 
@@ -143,7 +143,7 @@ export const PartnerProfileScreen: React.FC = () => {
         <View style={styles.profileHeader}>
           {partner.profilePhoto ? (
             <Image
-              source={{ uri: `${API_BASE_URL}${partner.profilePhoto}` }}
+              source={{ uri: getMediaUrl(partner.profilePhoto) }}
               style={styles.profilePhoto}
             />
           ) : (

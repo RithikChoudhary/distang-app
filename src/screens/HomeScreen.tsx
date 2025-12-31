@@ -25,7 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
 import { useAuthStore } from '../store/authStore';
-import { chatApi, locationApi, streakApi, callStatusApi, walkieApi, coupleApi, moodApi, MoodType, MoodData, API_BASE_URL } from '../services/api';
+import { chatApi, locationApi, streakApi, callStatusApi, walkieApi, coupleApi, moodApi, MoodType, MoodData, API_BASE_URL, getMediaUrl } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightColors as staticColors, typography, spacing, borderRadius, shadows } from '../utils/theme';
 import { useTheme } from '../hooks/useTheme';
@@ -614,7 +614,7 @@ export const HomeScreen: React.FC = () => {
       longitude: myLocation.longitude,
       label: user?.name || 'You',
       isMe: true,
-      photoUrl: user?.profilePhoto ? `${API_BASE_URL}${user.profilePhoto}` : undefined,
+      photoUrl: getMediaUrl(user?.profilePhoto),
     });
   }
   if (partnerLocation) {
@@ -623,7 +623,7 @@ export const HomeScreen: React.FC = () => {
       longitude: partnerLocation.longitude,
       label: partner?.name || 'Partner',
       isMe: false,
-      photoUrl: partner?.profilePhoto ? `${API_BASE_URL}${partner.profilePhoto}` : undefined,
+      photoUrl: getMediaUrl(partner?.profilePhoto),
     });
   }
 
@@ -736,7 +736,7 @@ export const HomeScreen: React.FC = () => {
                   <View style={[styles.albumFrame, partnerPhotos.length > 0 && styles.albumGlow]}>
                     {(partnerPhotos.length > 0 ? partnerPhotos[0].imagePath : partner.profilePhoto) ? (
                       <Image
-                        source={{ uri: `${API_BASE_URL}${partnerPhotos.length > 0 ? partnerPhotos[0].imagePath : partner.profilePhoto}` }}
+                        source={{ uri: getMediaUrl(partnerPhotos.length > 0 ? partnerPhotos[0].imagePath : partner.profilePhoto) }}
                         style={styles.albumImage}
                       />
                     ) : (
@@ -910,7 +910,7 @@ export const HomeScreen: React.FC = () => {
                     ]}>
                       {user?.profilePhoto ? (
                         <Image 
-                          source={{ uri: `${API_BASE_URL}${user.profilePhoto}` }} 
+                          source={{ uri: getMediaUrl(user.profilePhoto) }} 
                           style={styles.distancePhotoImage}
                         />
                       ) : (
@@ -952,7 +952,7 @@ export const HomeScreen: React.FC = () => {
                     ]}>
                       {partner?.profilePhoto ? (
                         <Image 
-                          source={{ uri: `${API_BASE_URL}${partner.profilePhoto}` }} 
+                          source={{ uri: getMediaUrl(partner.profilePhoto) }} 
                           style={styles.distancePhotoImage}
                         />
                       ) : (
@@ -1142,7 +1142,7 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.storyUserInfo}>
               {partner?.profilePhoto ? (
                 <Image
-                  source={{ uri: `${API_BASE_URL}${partner.profilePhoto}` }}
+                  source={{ uri: getMediaUrl(partner.profilePhoto) }}
                   style={styles.storyAvatar}
                 />
               ) : (
@@ -1163,7 +1163,7 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.storyImageContainer}>
               {partnerPhotos[currentStreakIndex] && (
                 <Image
-                  source={{ uri: `${API_BASE_URL}${partnerPhotos[currentStreakIndex].imagePath}` }}
+                  source={{ uri: getMediaUrl(partnerPhotos[currentStreakIndex].imagePath) }}
                   style={styles.storyImage}
                   resizeMode="contain"
                 />
