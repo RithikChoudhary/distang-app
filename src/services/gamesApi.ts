@@ -129,5 +129,32 @@ export const gamesService = {
   },
 };
 
+// Alias for easier import in game screens
+export const gamesApi = {
+  createGame: async (gameType: string, partnerId: string) => {
+    const response = await axios.create({
+      baseURL: GAMES_API_URL,
+      timeout: 15000,
+    }).post('/games/create', { gameType, partnerId }, {
+      headers: {
+        Authorization: `Bearer ${await SecureStore.getItemAsync(TOKEN_KEY)}`,
+      },
+    });
+    return { data: response.data.data };
+  },
+  
+  getActiveGame: async () => {
+    const response = await axios.create({
+      baseURL: GAMES_API_URL,
+      timeout: 15000,
+    }).get('/games/active', {
+      headers: {
+        Authorization: `Bearer ${await SecureStore.getItemAsync(TOKEN_KEY)}`,
+      },
+    });
+    return { data: response.data.data };
+  },
+};
+
 export default gamesService;
 

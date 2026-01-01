@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,177 +7,226 @@ import {
   Alert,
   Platform,
   Vibration,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { io, Socket } from 'socket.io-client';
+import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/authStore';
+import { gamesApi, GAMES_API_URL } from '../services/gamesApi';
 import { typography, spacing, borderRadius, shadows } from '../utils/theme';
 
 type Cell = 'X' | 'O' | null;
-type Board = Cell[][];
 
-const INITIAL_BOARD: Board = [
-  [null, null, null],
-  [null, null, null],
-  [null, null, null],
-];
+interface GameState {
+  board: Cell[][];
+  currentPlayer: string;
+  player1Symbol: 'X' | 'O';
+  player2Symbol: 'X' | 'O';
+}
+
+interface Game {
+  _id: string;
+  gameType: string;
+  status: 'waiting' | 'active' | 'completed' | 'timeout' | 'abandoned';
+  player1: string;
+  player2: string;
+  currentTurn: string;
+  gameState: GameState;
+  winner?: string;
+  isDraw: boolean;
+}
+
+const TOKEN_KEY = 'codex_auth_token';
 
 export const TicTacToeScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
   const { user, partner } = useAuthStore();
   
-  const [board, setBoard] = useState<Board>(INITIAL_BOARD);
-  const [isMyTurn, setIsMyTurn] = useState(true);
-  const [mySymbol] = useState<'X' | 'O'>('X');
-  const [gameStatus, setGameStatus] = useState<'playing' | 'won' | 'lost' | 'draw'>('playing');
-  const [turnTimer, setTurnTimer] = useState(600); // 10 minutes in seconds
-  
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [game, setGame] = useState<Game | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [turnTimer, setTurnTimer] = useState(600);
+  const [error, setError] = useState<string | null>(null);
+
+  const isMyTurn = game?.currentTurn === user?._id;
+  const mySymbol = game?.player1 === user?._id ? game?.gameState?.player1Symbol : game?.gameState?.player2Symbol;
   const partnerSymbol = mySymbol === 'X' ? 'O' : 'X';
+
+  // Connect to WebSocket
+  useEffect(() => {
+    const connectSocket = async () => {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!token) return;
+
+      const newSocket = io(GAMES_API_URL, {
+        auth: { token },
+        transports: ['websocket'],
+      });
+
+      newSocket.on('connect', () => {
+        console.log('🎮 Connected to games server');
+        setIsConnecting(false);
+      });
+
+      newSocket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err);
+        setError('Failed to connect to game server');
+        setIsConnecting(false);
+      });
+
+      newSocket.on('game:state', ({ game }) => {
+        setGame(game);
+        setIsLoading(false);
+      });
+
+      newSocket.on('game:update', ({ game: updatedGame }) => {
+        setGame(updatedGame);
+        setTurnTimer(600);
+        Vibration.vibrate(50);
+      });
+
+      newSocket.on('game:ended', ({ winner, isDraw }) => {
+        if (isDraw) {
+          Alert.alert('🤝 Draw!', "It's a tie!");
+        } else if (winner === user?._id) {
+          Alert.alert('🎉 You Win!', 'Congratulations!');
+        } else {
+          Alert.alert('😢 You Lost', 'Better luck next time!');
+        }
+      });
+
+      newSocket.on('game:timeout', ({ winnerId }) => {
+        if (winnerId === user?._id) {
+          Alert.alert('🎉 You Win!', 'Your partner ran out of time!');
+        } else {
+          Alert.alert('⏰ Time Out!', 'You ran out of time!');
+        }
+      });
+
+      newSocket.on('game:forfeited', ({ forfeitedBy }) => {
+        if (forfeitedBy === user?._id) {
+          Alert.alert('Game Forfeited', 'You forfeited the game.');
+        } else {
+          Alert.alert('🎉 You Win!', 'Your partner forfeited.');
+        }
+      });
+
+      newSocket.on('error', ({ message }) => {
+        Alert.alert('Error', message);
+      });
+
+      setSocket(newSocket);
+      setIsConnecting(true);
+    };
+
+    connectSocket();
+
+    return () => {
+      socket?.disconnect();
+    };
+  }, []);
+
+  // Load or create game
+  useEffect(() => {
+    const initGame = async () => {
+      try {
+        // Check for active game
+        const activeGame = await gamesApi.getActiveGame();
+        
+        if (activeGame.data?.game && activeGame.data.game.gameType === 'tic_tac_toe') {
+          // Join existing game
+          setGame(activeGame.data.game);
+          socket?.emit('game:join', activeGame.data.game._id);
+          setIsLoading(false);
+        } else if (partner) {
+          // Create new game
+          const newGame = await gamesApi.createGame('tic_tac_toe', partner._id);
+          if (newGame.data?.game) {
+            setGame(newGame.data.game);
+            socket?.emit('game:join', newGame.data.game._id);
+          }
+          setIsLoading(false);
+        }
+      } catch (err: any) {
+        console.error('Init game error:', err);
+        setError(err.message || 'Failed to start game');
+        setIsLoading(false);
+      }
+    };
+
+    if (socket?.connected) {
+      initGame();
+    }
+  }, [socket?.connected, partner]);
 
   // Turn timer
   useEffect(() => {
-    if (gameStatus !== 'playing') return;
+    if (!game || game.status !== 'active') return;
     
     const interval = setInterval(() => {
       setTurnTimer(prev => {
-        if (prev <= 1) {
-          // Time's up - current player loses
-          if (isMyTurn) {
-            setGameStatus('lost');
-            Alert.alert('⏰ Time Out!', 'You ran out of time!');
-          } else {
-            setGameStatus('won');
-            Alert.alert('🎉 You Win!', 'Your partner ran out of time!');
-          }
-          return 0;
-        }
+        if (prev <= 1) return 0;
         return prev - 1;
       });
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [isMyTurn, gameStatus]);
+  }, [game?.status, game?.currentTurn]);
 
-  const checkWinner = (newBoard: Board): Cell => {
-    // Check rows
-    for (let i = 0; i < 3; i++) {
-      if (newBoard[i][0] && newBoard[i][0] === newBoard[i][1] && newBoard[i][1] === newBoard[i][2]) {
-        return newBoard[i][0];
-      }
-    }
-    
-    // Check columns
-    for (let i = 0; i < 3; i++) {
-      if (newBoard[0][i] && newBoard[0][i] === newBoard[1][i] && newBoard[1][i] === newBoard[2][i]) {
-        return newBoard[0][i];
-      }
-    }
-    
-    // Check diagonals
-    if (newBoard[0][0] && newBoard[0][0] === newBoard[1][1] && newBoard[1][1] === newBoard[2][2]) {
-      return newBoard[0][0];
-    }
-    if (newBoard[0][2] && newBoard[0][2] === newBoard[1][1] && newBoard[1][1] === newBoard[2][0]) {
-      return newBoard[0][2];
-    }
-    
-    return null;
-  };
-
-  const isBoardFull = (newBoard: Board): boolean => {
-    return newBoard.every(row => row.every(cell => cell !== null));
-  };
-
-  const handleCellPress = (row: number, col: number) => {
-    if (gameStatus !== 'playing') return;
+  const handleCellPress = useCallback((row: number, col: number) => {
+    if (!game || game.status !== 'active') return;
     if (!isMyTurn) {
       Vibration.vibrate(50);
       return;
     }
-    if (board[row][col] !== null) return;
+    if (game.gameState.board[row][col] !== null) return;
     
-    // Make move
-    const newBoard = board.map(r => [...r]);
-    newBoard[row][col] = mySymbol;
-    setBoard(newBoard);
+    // Send move via WebSocket
+    socket?.emit('game:move', {
+      gameId: game._id,
+      move: { row, col },
+    });
+    
     Vibration.vibrate(30);
-    
-    // Check for winner
-    const winner = checkWinner(newBoard);
-    if (winner) {
-      if (winner === mySymbol) {
-        setGameStatus('won');
-        setTimeout(() => Alert.alert('🎉 You Win!', 'Congratulations!'), 300);
-      } else {
-        setGameStatus('lost');
-        setTimeout(() => Alert.alert('😢 You Lost', 'Better luck next time!'), 300);
-      }
-      return;
-    }
-    
-    // Check for draw
-    if (isBoardFull(newBoard)) {
-      setGameStatus('draw');
-      setTimeout(() => Alert.alert('🤝 Draw!', "It's a tie!"), 300);
-      return;
-    }
-    
-    // Switch turn
-    setIsMyTurn(false);
-    setTurnTimer(600);
-    
-    // Simulate partner's move (for demo - replace with real-time sync)
-    simulatePartnerMove(newBoard);
+  }, [game, isMyTurn, socket]);
+
+  const handleForfeit = () => {
+    Alert.alert(
+      'Forfeit Game',
+      'Are you sure you want to forfeit? You will lose the game.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forfeit',
+          style: 'destructive',
+          onPress: () => {
+            socket?.emit('game:forfeit', game?._id);
+          },
+        },
+      ]
+    );
   };
 
-  // Demo: Simulate partner's move (replace with WebSocket in production)
-  const simulatePartnerMove = (currentBoard: Board) => {
-    setTimeout(() => {
-      const emptyCells: { row: number; col: number }[] = [];
-      currentBoard.forEach((row, i) => {
-        row.forEach((cell, j) => {
-          if (cell === null) emptyCells.push({ row: i, col: j });
-        });
-      });
-      
-      if (emptyCells.length === 0) return;
-      
-      const randomMove = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-      const newBoard = currentBoard.map(r => [...r]);
-      newBoard[randomMove.row][randomMove.col] = partnerSymbol;
-      setBoard(newBoard);
-      
-      // Check for winner
-      const winner = checkWinner(newBoard);
-      if (winner) {
-        if (winner === mySymbol) {
-          setGameStatus('won');
-          setTimeout(() => Alert.alert('🎉 You Win!', 'Congratulations!'), 300);
-        } else {
-          setGameStatus('lost');
-          setTimeout(() => Alert.alert('😢 You Lost', 'Better luck next time!'), 300);
-        }
-        return;
+  const handlePlayAgain = async () => {
+    if (!partner) return;
+    
+    setIsLoading(true);
+    try {
+      const newGame = await gamesApi.createGame('tic_tac_toe', partner._id);
+      if (newGame.data?.game) {
+        setGame(newGame.data.game);
+        socket?.emit('game:join', newGame.data.game._id);
+        setTurnTimer(600);
       }
-      
-      if (isBoardFull(newBoard)) {
-        setGameStatus('draw');
-        setTimeout(() => Alert.alert('🤝 Draw!', "It's a tie!"), 300);
-        return;
-      }
-      
-      setIsMyTurn(true);
-      setTurnTimer(600);
-    }, 1500);
-  };
-
-  const resetGame = () => {
-    setBoard(INITIAL_BOARD);
-    setIsMyTurn(true);
-    setGameStatus('playing');
-    setTurnTimer(600);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to start new game');
+    }
+    setIsLoading(false);
   };
 
   const formatTime = (seconds: number): string => {
@@ -187,6 +236,30 @@ export const TicTacToeScreen: React.FC = () => {
   };
 
   const styles = createStyles(colors, isDark);
+  const board = game?.gameState?.board || [[null, null, null], [null, null, null], [null, null, null]];
+  const gameEnded = game?.status === 'completed' || game?.status === 'timeout' || game?.status === 'abandoned';
+
+  if (isLoading || isConnecting) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+          {isConnecting ? 'Connecting to game server...' : 'Loading game...'}
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -199,8 +272,8 @@ export const TicTacToeScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>⭕ Tic-Tac-Toe</Text>
-        <TouchableOpacity style={styles.resetBtn} onPress={resetGame}>
-          <Ionicons name="refresh" size={22} color={colors.primary} />
+        <TouchableOpacity style={styles.resetBtn} onPress={handleForfeit}>
+          <Ionicons name="flag" size={22} color={colors.error} />
         </TouchableOpacity>
       </View>
 
@@ -217,17 +290,19 @@ export const TicTacToeScreen: React.FC = () => {
         <View style={[styles.playerCard, !isMyTurn && styles.playerCardActive]}>
           <Text style={styles.playerSymbol}>{partnerSymbol}</Text>
           <Text style={styles.playerName}>{partner?.name || 'Partner'}</Text>
-          {!isMyTurn && <Text style={styles.turnIndicator}>Thinking...</Text>}
+          {!isMyTurn && game?.status === 'active' && <Text style={styles.turnIndicator}>Thinking...</Text>}
         </View>
       </View>
 
       {/* Timer */}
-      <View style={styles.timerContainer}>
-        <Ionicons name="time-outline" size={20} color={turnTimer < 60 ? colors.error : colors.textSecondary} />
-        <Text style={[styles.timerText, turnTimer < 60 && { color: colors.error }]}>
-          {formatTime(turnTimer)}
-        </Text>
-      </View>
+      {game?.status === 'active' && (
+        <View style={styles.timerContainer}>
+          <Ionicons name="time-outline" size={20} color={turnTimer < 60 ? colors.error : colors.textSecondary} />
+          <Text style={[styles.timerText, turnTimer < 60 && { color: colors.error }]}>
+            {formatTime(turnTimer)}
+          </Text>
+        </View>
+      )}
 
       {/* Game Board */}
       <View style={styles.boardContainer}>
@@ -243,7 +318,7 @@ export const TicTacToeScreen: React.FC = () => {
                     i < 2 && styles.cellBorderBottom,
                   ]}
                   onPress={() => handleCellPress(i, j)}
-                  disabled={gameStatus !== 'playing' || !isMyTurn || cell !== null}
+                  disabled={gameEnded || !isMyTurn || cell !== null}
                 >
                   <Text style={[
                     styles.cellText,
@@ -260,16 +335,25 @@ export const TicTacToeScreen: React.FC = () => {
       </View>
 
       {/* Game Status */}
-      {gameStatus !== 'playing' && (
+      {gameEnded && (
         <View style={styles.resultContainer}>
           <Text style={styles.resultText}>
-            {gameStatus === 'won' && '🎉 You Won!'}
-            {gameStatus === 'lost' && '😢 You Lost'}
-            {gameStatus === 'draw' && '🤝 It\'s a Draw!'}
+            {game?.isDraw && '🤝 It\'s a Draw!'}
+            {game?.winner === user?._id && '🎉 You Won!'}
+            {game?.winner && game?.winner !== user?._id && '😢 You Lost'}
+            {game?.status === 'timeout' && (game?.winner === user?._id ? '🎉 You Won!' : '⏰ Time Out!')}
           </Text>
-          <TouchableOpacity style={styles.playAgainBtn} onPress={resetGame}>
+          <TouchableOpacity style={styles.playAgainBtn} onPress={handlePlayAgain}>
             <Text style={styles.playAgainText}>Play Again</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Waiting for partner */}
+      {game?.status === 'active' && !isMyTurn && (
+        <View style={styles.waitingContainer}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.waitingText}>Waiting for {partner?.name}'s move...</Text>
         </View>
       )}
     </View>
@@ -280,6 +364,29 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundAlt,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.base,
+  },
+  errorText: {
+    fontSize: typography.fontSize.base,
+    color: colors.error,
+    marginBottom: spacing.md,
+  },
+  retryBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+  },
+  retryText: {
+    color: 'white',
+    fontWeight: '600',
   },
 
   header: {
@@ -308,7 +415,7 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: 'rgba(239,68,68,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -421,7 +528,18 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+
+  waitingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.xl,
+  },
+  waitingText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
 });
 
 export default TicTacToeScreen;
-

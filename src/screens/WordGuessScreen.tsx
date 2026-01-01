@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,20 @@ import {
   Platform,
   Vibration,
   ScrollView,
-  Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { io, Socket } from 'socket.io-client';
+import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/authStore';
+import { gamesApi, GAMES_API_URL } from '../services/gamesApi';
 import { typography, spacing, borderRadius, shadows } from '../utils/theme';
 
 const WORD_LENGTH = 5;
 const MAX_ATTEMPTS = 6;
+const TOKEN_KEY = 'codex_auth_token';
 
 type LetterResult = 'correct' | 'present' | 'absent' | 'empty';
 
@@ -27,41 +31,164 @@ interface Guess {
   results: LetterResult[];
 }
 
+interface GameState {
+  secretWord: string | null;
+  guesses: Guess[];
+  status: 'setting' | 'guessing';
+  setter: string;
+  guesser: string;
+}
+
+interface Game {
+  _id: string;
+  gameType: string;
+  status: 'waiting' | 'active' | 'completed' | 'timeout' | 'abandoned';
+  player1: string;
+  player2: string;
+  currentTurn: string;
+  gameState: GameState;
+  winner?: string;
+  isDraw: boolean;
+}
+
 export const WordGuessScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
-  const { partner } = useAuthStore();
+  const { user, partner } = useAuthStore();
   
-  const [phase, setPhase] = useState<'setting' | 'guessing' | 'won' | 'lost'>('setting');
-  const [secretWord, setSecretWord] = useState('');
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [game, setGame] = useState<Game | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [wordInput, setWordInput] = useState('');
-  const [guesses, setGuesses] = useState<Guess[]>([]);
-  const [currentGuess, setCurrentGuess] = useState('');
+  const [guessInput, setGuessInput] = useState('');
   const [turnTimer, setTurnTimer] = useState(600);
-  const [isMyTurn, setIsMyTurn] = useState(true); // I set the word first
-  
+  const [error, setError] = useState<string | null>(null);
+
+  const isMyTurn = game?.currentTurn === user?._id;
+  const amISetter = game?.gameState?.setter === user?._id;
+  const amIGuesser = game?.gameState?.guesser === user?._id;
+  const phase = game?.gameState?.status || 'setting';
+  const guesses = game?.gameState?.guesses || [];
+  const secretWord = game?.gameState?.secretWord || '';
+
+  // Connect to WebSocket
   useEffect(() => {
-    if (phase === 'won' || phase === 'lost') return;
+    const connectSocket = async () => {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!token) return;
+
+      const newSocket = io(GAMES_API_URL, {
+        auth: { token },
+        transports: ['websocket'],
+      });
+
+      newSocket.on('connect', () => {
+        console.log('🎮 Connected to games server');
+        setIsConnecting(false);
+      });
+
+      newSocket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err);
+        setError('Failed to connect to game server');
+        setIsConnecting(false);
+      });
+
+      newSocket.on('game:state', ({ game }) => {
+        setGame(game);
+        setIsLoading(false);
+      });
+
+      newSocket.on('game:update', ({ game: updatedGame }) => {
+        setGame(updatedGame);
+        setTurnTimer(600);
+        Vibration.vibrate(50);
+      });
+
+      newSocket.on('game:ended', ({ winner }) => {
+        if (winner === user?._id) {
+          Alert.alert('🎉 You Win!', 'Congratulations!');
+        } else {
+          Alert.alert('😢 Game Over', 'Better luck next time!');
+        }
+      });
+
+      newSocket.on('game:timeout', ({ winnerId }) => {
+        if (winnerId === user?._id) {
+          Alert.alert('🎉 You Win!', 'Your partner ran out of time!');
+        } else {
+          Alert.alert('⏰ Time Out!', 'You ran out of time!');
+        }
+      });
+
+      newSocket.on('game:forfeited', ({ forfeitedBy }) => {
+        if (forfeitedBy === user?._id) {
+          Alert.alert('Game Forfeited', 'You forfeited the game.');
+        } else {
+          Alert.alert('🎉 You Win!', 'Your partner forfeited.');
+        }
+      });
+
+      newSocket.on('error', ({ message }) => {
+        Alert.alert('Error', message);
+      });
+
+      setSocket(newSocket);
+      setIsConnecting(true);
+    };
+
+    connectSocket();
+
+    return () => {
+      socket?.disconnect();
+    };
+  }, []);
+
+  // Load or create game
+  useEffect(() => {
+    const initGame = async () => {
+      try {
+        const activeGame = await gamesApi.getActiveGame();
+        
+        if (activeGame.data?.game && activeGame.data.game.gameType === 'word_guess') {
+          setGame(activeGame.data.game);
+          socket?.emit('game:join', activeGame.data.game._id);
+          setIsLoading(false);
+        } else if (partner) {
+          const newGame = await gamesApi.createGame('word_guess', partner._id);
+          if (newGame.data?.game) {
+            setGame(newGame.data.game);
+            socket?.emit('game:join', newGame.data.game._id);
+          }
+          setIsLoading(false);
+        }
+      } catch (err: any) {
+        console.error('Init game error:', err);
+        setError(err.message || 'Failed to start game');
+        setIsLoading(false);
+      }
+    };
+
+    if (socket?.connected) {
+      initGame();
+    }
+  }, [socket?.connected, partner]);
+
+  // Turn timer
+  useEffect(() => {
+    if (!game || game.status !== 'active') return;
     
     const interval = setInterval(() => {
       setTurnTimer(prev => {
-        if (prev <= 1) {
-          if (phase === 'setting' && isMyTurn) {
-            Alert.alert('⏰ Time Out!', 'You took too long to set a word!');
-          } else if (phase === 'guessing' && isMyTurn) {
-            setPhase('lost');
-            Alert.alert('⏰ Time Out!', 'You ran out of time!');
-          }
-          return 0;
-        }
+        if (prev <= 1) return 0;
         return prev - 1;
       });
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [phase, isMyTurn]);
+  }, [game?.status, game?.currentTurn]);
 
-  const handleSetWord = () => {
+  const handleSetWord = useCallback(() => {
     const word = wordInput.toUpperCase().trim();
     
     if (word.length !== WORD_LENGTH) {
@@ -74,85 +201,71 @@ export const WordGuessScreen: React.FC = () => {
       return;
     }
     
-    setSecretWord(word);
+    // Send the secret word via WebSocket
+    socket?.emit('game:move', {
+      gameId: game?._id,
+      move: { type: 'setWord', word },
+    });
+    
     setWordInput('');
-    setPhase('guessing');
-    setIsMyTurn(false);
-    setTurnTimer(600);
     Vibration.vibrate(50);
-    
-    // Simulate partner guessing
-    simulatePartnerGuess(word);
-  };
+  }, [wordInput, game, socket]);
 
-  const simulatePartnerGuess = (secret: string) => {
-    // For demo, simulate partner making guesses
-    const commonWords = ['HELLO', 'WORLD', 'APPLE', 'BRAIN', 'CRANE', 'DREAM', 'EARTH'];
-    let attemptCount = 0;
+  const handleGuess = useCallback(() => {
+    const guess = guessInput.toUpperCase().trim();
     
-    const makeGuess = () => {
-      if (attemptCount >= MAX_ATTEMPTS) {
-        setPhase('won');
-        Alert.alert('🎉 You Win!', `${partner?.name || 'Partner'} couldn't guess your word: ${secret}`);
-        return;
-      }
-      
-      const guess = commonWords[attemptCount % commonWords.length];
-      const results = checkGuess(guess, secret);
-      
-      setGuesses(prev => [...prev, { word: guess, results }]);
-      attemptCount++;
-      
-      if (guess === secret) {
-        setPhase('lost');
-        Alert.alert('😢 You Lost', `${partner?.name || 'Partner'} guessed your word!`);
-        return;
-      }
-      
-      // Continue guessing
-      setTimeout(makeGuess, 2000);
-    };
-    
-    setTimeout(makeGuess, 1500);
-  };
-
-  const checkGuess = (guess: string, secret: string): LetterResult[] => {
-    const results: LetterResult[] = [];
-    const secretLetters = secret.split('');
-    const usedIndices = new Set<number>();
-    
-    // First pass: mark correct
-    for (let i = 0; i < WORD_LENGTH; i++) {
-      if (guess[i] === secret[i]) {
-        results[i] = 'correct';
-        usedIndices.add(i);
-      }
+    if (guess.length !== WORD_LENGTH) {
+      Alert.alert('Invalid Guess', `Guess must be ${WORD_LENGTH} letters`);
+      return;
     }
     
-    // Second pass: mark present/absent
-    for (let i = 0; i < WORD_LENGTH; i++) {
-      if (results[i]) continue;
-      
-      const idx = secretLetters.findIndex((l, j) => l === guess[i] && !usedIndices.has(j));
-      if (idx !== -1) {
-        results[i] = 'present';
-        usedIndices.add(idx);
-      } else {
-        results[i] = 'absent';
-      }
+    if (!/^[A-Z]+$/.test(guess)) {
+      Alert.alert('Invalid Guess', 'Guess must contain only letters');
+      return;
     }
     
-    return results;
+    // Send the guess via WebSocket
+    socket?.emit('game:move', {
+      gameId: game?._id,
+      move: { type: 'guess', guess },
+    });
+    
+    setGuessInput('');
+    Vibration.vibrate(30);
+  }, [guessInput, game, socket]);
+
+  const handleForfeit = () => {
+    Alert.alert(
+      'Forfeit Game',
+      'Are you sure you want to forfeit?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forfeit',
+          style: 'destructive',
+          onPress: () => {
+            socket?.emit('game:forfeit', game?._id);
+          },
+        },
+      ]
+    );
   };
 
-  const resetGame = () => {
-    setPhase('setting');
-    setSecretWord('');
-    setWordInput('');
-    setGuesses([]);
-    setCurrentGuess('');
-    setTurnTimer(600);
-    setIsMyTurn(true);
+  const handlePlayAgain = async () => {
+    if (!partner) return;
+    
+    setIsLoading(true);
+    try {
+      const newGame = await gamesApi.createGame('word_guess', partner._id);
+      if (newGame.data?.game) {
+        setGame(newGame.data.game);
+        socket?.emit('game:join', newGame.data.game._id);
+        setTurnTimer(600);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to start new game');
+    }
+    setIsLoading(false);
   };
 
   const formatTime = (seconds: number): string => {
@@ -171,6 +284,29 @@ export const WordGuessScreen: React.FC = () => {
   };
 
   const styles = createStyles(colors, isDark);
+  const gameEnded = game?.status === 'completed' || game?.status === 'timeout' || game?.status === 'abandoned';
+
+  if (isLoading || isConnecting) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+          {isConnecting ? 'Connecting to game server...' : 'Loading game...'}
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -180,22 +316,24 @@ export const WordGuessScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>📝 Word Guess</Text>
-        <TouchableOpacity style={styles.resetBtn} onPress={resetGame}>
-          <Ionicons name="refresh" size={22} color={colors.primary} />
+        <TouchableOpacity style={styles.resetBtn} onPress={handleForfeit}>
+          <Ionicons name="flag" size={22} color={colors.error} />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Timer */}
-        <View style={styles.timerContainer}>
-          <Ionicons name="time-outline" size={20} color={turnTimer < 60 ? colors.error : colors.textSecondary} />
-          <Text style={[styles.timerText, turnTimer < 60 && { color: colors.error }]}>
-            {formatTime(turnTimer)}
-          </Text>
-        </View>
+        {game?.status === 'active' && (
+          <View style={styles.timerContainer}>
+            <Ionicons name="time-outline" size={20} color={turnTimer < 60 ? colors.error : colors.textSecondary} />
+            <Text style={[styles.timerText, turnTimer < 60 && { color: colors.error }]}>
+              {formatTime(turnTimer)}
+            </Text>
+          </View>
+        )}
 
-        {/* Setting Phase */}
-        {phase === 'setting' && (
+        {/* Setting Phase - I'm the setter */}
+        {phase === 'setting' && amISetter && isMyTurn && (
           <View style={styles.settingContainer}>
             <View style={styles.instructionCard}>
               <Text style={styles.instructionEmoji}>🤫</Text>
@@ -229,16 +367,28 @@ export const WordGuessScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Setting Phase - Waiting for partner to set word */}
+        {phase === 'setting' && !isMyTurn && (
+          <View style={styles.waitingScreen}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.waitingTitle}>Waiting for {partner?.name}...</Text>
+            <Text style={styles.waitingSubtitle}>They're setting a secret word for you to guess!</Text>
+          </View>
+        )}
+
         {/* Guessing Phase */}
-        {(phase === 'guessing' || phase === 'won' || phase === 'lost') && (
+        {phase === 'guessing' && !gameEnded && (
           <View style={styles.guessingContainer}>
-            <View style={styles.secretWordCard}>
-              <Text style={styles.secretLabel}>Your Secret Word:</Text>
-              <Text style={styles.secretWord}>{secretWord}</Text>
-            </View>
+            {/* Show secret word to setter */}
+            {amISetter && secretWord && (
+              <View style={styles.secretWordCard}>
+                <Text style={styles.secretLabel}>Your Secret Word:</Text>
+                <Text style={styles.secretWord}>{secretWord}</Text>
+              </View>
+            )}
             
             <Text style={styles.guessesTitle}>
-              {partner?.name || 'Partner'}'s Guesses ({guesses.length}/{MAX_ATTEMPTS})
+              {amIGuesser ? 'Your' : `${partner?.name}'s`} Guesses ({guesses.length}/{MAX_ATTEMPTS})
             </Text>
             
             {/* Guesses Grid */}
@@ -267,6 +417,39 @@ export const WordGuessScreen: React.FC = () => {
               })}
             </View>
 
+            {/* Guess input for guesser */}
+            {amIGuesser && isMyTurn && (
+              <View style={styles.guessInputContainer}>
+                <TextInput
+                  style={styles.guessTextInput}
+                  value={guessInput}
+                  onChangeText={t => setGuessInput(t.toUpperCase().slice(0, WORD_LENGTH))}
+                  placeholder="YOUR GUESS"
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={WORD_LENGTH}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity 
+                  style={[styles.guessBtn, guessInput.length !== WORD_LENGTH && styles.guessBtnDisabled]}
+                  onPress={handleGuess}
+                  disabled={guessInput.length !== WORD_LENGTH}
+                >
+                  <Text style={styles.guessBtnText}>Guess</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Waiting for partner to guess */}
+            {amISetter && !isMyTurn && (
+              <View style={styles.waitingForGuess}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.waitingGuessText}>
+                  Waiting for {partner?.name}'s guess...
+                </Text>
+              </View>
+            )}
+
             {/* Legend */}
             <View style={styles.legend}>
               <View style={styles.legendItem}>
@@ -286,12 +469,15 @@ export const WordGuessScreen: React.FC = () => {
         )}
 
         {/* Result */}
-        {(phase === 'won' || phase === 'lost') && (
+        {gameEnded && (
           <View style={styles.resultContainer}>
             <Text style={styles.resultText}>
-              {phase === 'won' ? '🎉 You Win!' : '😢 They Got It!'}
+              {game?.winner === user?._id ? '🎉 You Win!' : '😢 Game Over'}
             </Text>
-            <TouchableOpacity style={styles.playAgainBtn} onPress={resetGame}>
+            {secretWord && (
+              <Text style={styles.revealedWord}>The word was: {secretWord}</Text>
+            )}
+            <TouchableOpacity style={styles.playAgainBtn} onPress={handlePlayAgain}>
               <Text style={styles.playAgainText}>Play Again</Text>
             </TouchableOpacity>
           </View>
@@ -306,6 +492,30 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.backgroundAlt,
   },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.base,
+  },
+  errorText: {
+    fontSize: typography.fontSize.base,
+    color: colors.error,
+    marginBottom: spacing.md,
+  },
+  retryBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+  },
+  retryText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -332,7 +542,7 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: 'rgba(239,68,68,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -418,6 +628,24 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     color: 'white',
   },
 
+  // Waiting screen
+  waitingScreen: {
+    alignItems: 'center',
+    paddingVertical: spacing['2xl'],
+  },
+  waitingTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text,
+    marginTop: spacing.lg,
+  },
+  waitingSubtitle: {
+    fontSize: typography.fontSize.base,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+
   // Guessing phase
   guessingContainer: {
     alignItems: 'center',
@@ -469,6 +697,51 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     color: 'white',
   },
 
+  guessInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+    width: '100%',
+  },
+  guessTextInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: colors.text,
+    letterSpacing: 4,
+    ...shadows.sm,
+  },
+  guessBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.xl,
+  },
+  guessBtnDisabled: {
+    opacity: 0.5,
+  },
+  guessBtnText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: '600',
+    color: 'white',
+  },
+
+  waitingForGuess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  waitingGuessText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+
   legend: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -498,6 +771,11 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  revealedWord: {
+    fontSize: typography.fontSize.lg,
+    color: colors.textSecondary,
     marginBottom: spacing.md,
   },
   playAgainBtn: {
@@ -514,4 +792,3 @@ const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
 });
 
 export default WordGuessScreen;
-
