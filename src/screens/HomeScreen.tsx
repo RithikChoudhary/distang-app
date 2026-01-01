@@ -15,6 +15,7 @@ import {
   AppState,
   PanResponder,
   TextInput,
+  SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -1091,8 +1092,8 @@ export const HomeScreen: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#0f0f23' : '#FFFFFF' }]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0f0f23' : '#FFFFFF' }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? '#0f0f23' : '#FFFFFF'} />
       
       <View style={styles.mainContent}>
         {isDark ? (
@@ -1252,7 +1253,7 @@ export const HomeScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 
