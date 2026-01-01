@@ -541,7 +541,8 @@ export const ChatScreen: React.FC = () => {
   };
 
   const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
+    // Transform to flip back right-side-up since FlatList is inverted
+    <View style={[styles.emptyContainer, { transform: [{ scaleY: -1 }] }]}>
       <View style={[styles.emptyIconWrap, { backgroundColor: colors.primaryLight }]}>
         <Text style={styles.emptyEmoji}>💬</Text>
       </View>
