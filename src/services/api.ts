@@ -94,8 +94,17 @@ const createApiClient = (): AxiosInstance => {
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError<ApiResponse>) => {
-      if (error.response?.status === 401) {
-        // Token expired or invalid - clear it
+      // Only clear token for auth-specific 401s, not general API 401s
+      // 401 can also mean "not authorized for this action" (e.g., no consent)
+      // We should NOT clear the token in those cases
+      const isAuthEndpoint = error.config?.url?.includes('/auth/');
+      const isTokenInvalid = error.response?.data?.message?.toLowerCase().includes('token') ||
+                             error.response?.data?.message?.toLowerCase().includes('expired') ||
+                             error.response?.data?.message?.toLowerCase().includes('invalid');
+      
+      if (error.response?.status === 401 && isAuthEndpoint && isTokenInvalid) {
+        // Only clear token if it's actually invalid/expired
+        console.log('🔑 Token invalid, clearing...');
         await SecureStore.deleteItemAsync(TOKEN_KEY);
       }
       return Promise.reject(error);
