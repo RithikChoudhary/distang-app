@@ -8,7 +8,7 @@ import {
   SignupScreen,
   OTPVerifyScreen,
   OnboardingScreen,
-  NewLoginScreen,
+  LoginScreen,
   HomeScreen,
   PairScreen,
   ConsentScreen,
@@ -78,7 +78,7 @@ const AuthStack = () => (
   >
     <Stack.Screen name="Welcome" component={WelcomeScreen} />
     <Stack.Screen name="Signup" component={SignupScreen} />
-    <Stack.Screen name="Login" component={NewLoginScreen} />
+    <Stack.Screen name="Login" component={LoginScreen} />
     <Stack.Screen name="OTPVerify" component={OTPVerifyScreen} />
     <Stack.Screen name="Onboarding" component={OnboardingScreen} />
   </Stack.Navigator>

@@ -7,21 +7,22 @@ import * as SecureStore from 'expo-secure-store';
  */
 
 const DEV_GAMES_URL = 'http://192.168.68.110:4000';
-const PROD_GAMES_URL = 'https://games.distang.com'; // Production Games API
+const PROD_GAMES_URL = 'https://games.distang.com';
 
-const USE_PRODUCTION = true; // Using production backend
+const USE_PRODUCTION = true;
 
 export const GAMES_API_URL = USE_PRODUCTION ? PROD_GAMES_URL : DEV_GAMES_URL;
 
 const TOKEN_KEY = 'codex_auth_token';
 
-const gamesApi = axios.create({
+// Internal axios client - renamed to avoid conflict with exported gamesApi
+const gamesClient = axios.create({
   baseURL: GAMES_API_URL,
   timeout: 15000,
 });
 
 // Add auth token to requests
-gamesApi.interceptors.request.use(
+gamesClient.interceptors.request.use(
   async (config) => {
     const token = await SecureStore.getItemAsync(TOKEN_KEY);
     if (token) {
@@ -83,78 +84,56 @@ export interface GameStats {
 }
 
 export const gamesService = {
-  // Get list of available games
   getGamesList: async (): Promise<{ games: GameInfo[] }> => {
-    const response = await gamesApi.get('/games/list');
+    const response = await gamesClient.get('/games/list');
     return response.data.data;
   },
 
-  // Create a new game
   createGame: async (gameType: string, partnerId: string): Promise<{ game: Game }> => {
-    const response = await gamesApi.post('/games/create', { gameType, partnerId });
+    const response = await gamesClient.post('/games/create', { gameType, partnerId });
     return response.data.data;
   },
 
-  // Get current active game
   getActiveGame: async (): Promise<{ game: Game | null }> => {
-    const response = await gamesApi.get('/games/active');
+    const response = await gamesClient.get('/games/active');
     return response.data.data;
   },
 
-  // Make a move
   makeMove: async (gameId: string, move: any): Promise<{ game: Game }> => {
-    const response = await gamesApi.post(`/games/${gameId}/move`, { move });
+    const response = await gamesClient.post(`/games/${gameId}/move`, { move });
     return response.data.data;
   },
 
-  // Forfeit a game
   forfeitGame: async (gameId: string): Promise<{ game: Game }> => {
-    const response = await gamesApi.post(`/games/${gameId}/forfeit`);
+    const response = await gamesClient.post(`/games/${gameId}/forfeit`);
     return response.data.data;
   },
 
-  // Get game history
   getGameHistory: async (page: number = 1, limit: number = 20): Promise<{
     games: Game[];
     pagination: { page: number; limit: number; total: number; pages: number };
   }> => {
-    const response = await gamesApi.get('/games/history', { params: { page, limit } });
+    const response = await gamesClient.get('/games/history', { params: { page, limit } });
     return response.data.data;
   },
 
-  // Get game stats
   getGameStats: async (): Promise<{ stats: GameStats }> => {
-    const response = await gamesApi.get('/games/stats');
+    const response = await gamesClient.get('/games/stats');
     return response.data.data;
   },
 };
 
-// Alias for easier import in game screens
+// Exported API for game screens (WebSocket-based games)
 export const gamesApi = {
   createGame: async (gameType: string, partnerId: string) => {
-    const response = await axios.create({
-      baseURL: GAMES_API_URL,
-      timeout: 15000,
-    }).post('/games/create', { gameType, partnerId }, {
-      headers: {
-        Authorization: `Bearer ${await SecureStore.getItemAsync(TOKEN_KEY)}`,
-      },
-    });
+    const response = await gamesClient.post('/games/create', { gameType, partnerId });
     return { data: response.data.data };
   },
   
   getActiveGame: async () => {
-    const response = await axios.create({
-      baseURL: GAMES_API_URL,
-      timeout: 15000,
-    }).get('/games/active', {
-      headers: {
-        Authorization: `Bearer ${await SecureStore.getItemAsync(TOKEN_KEY)}`,
-      },
-    });
+    const response = await gamesClient.get('/games/active');
     return { data: response.data.data };
   },
 };
 
 export default gamesService;
-
