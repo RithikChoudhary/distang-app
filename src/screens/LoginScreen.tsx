@@ -1,253 +1,467 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Alert,
+  Dimensions,
+  ActivityIndicator,
+  Animated,
+  StatusBar,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Input } from '../components';
-import { useAuthStore } from '../store/authStore';
-import { colors, typography, spacing } from '../utils/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { authApi } from '../services/api';
+import { typography, spacing, borderRadius } from '../utils/theme';
+
+const { width, height } = Dimensions.get('window');
 
 interface LoginScreenProps {
   navigation: any;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
-  const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
-  const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
+type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  OTPVerify: {
+    email: string;
+    name: string;
+    username: string;
+    type: 'signup' | 'login';
+    devOtp?: string;
+  };
+};
 
-  const { login, isLoading } = useAuthStore();
+export const LoginScreen: React.FC<LoginScreenProps> = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Animations
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(40)).current;
+  const logoScale = useRef(new Animated.Value(0.8)).current;
+  const formOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(fadeIn, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.spring(logoScale, {
+          toValue: 1,
+          tension: 60,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.spring(slideUp, {
+          toValue: 0,
+          tension: 50,
+          friction: 10,
+          useNativeDriver: true,
+        }),
+        Animated.timing(formOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, []);
 
   const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (loginMethod === 'email') {
-      if (!email.trim()) {
-        newErrors.email = 'Email is required';
-      } else if (!/\S+@\S+\.\S+/.test(email)) {
-        newErrors.email = 'Invalid email format';
-      }
-    } else {
-      if (!phoneNumber.trim()) {
-        newErrors.phone = 'Phone number is required';
-      }
+    if (!email.trim()) {
+      setError('Email is required');
+      return false;
     }
-
-    if (!password) {
-      newErrors.password = 'Password is required';
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError('Invalid email format');
+      return false;
     }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setError(null);
+    return true;
   };
 
   const handleLogin = async () => {
     if (!validate()) return;
 
+    setLoading(true);
     try {
-      await login(
-        loginMethod === 'email' ? email.trim().toLowerCase() : undefined,
-        loginMethod === 'phone' ? phoneNumber.trim() : undefined,
-        password
-      );
+      const response = await authApi.loginInit(email.trim().toLowerCase());
+      
+      if (response.success) {
+        navigation.navigate('OTPVerify', {
+          email: email.trim().toLowerCase(),
+          name: '',
+          username: '',
+          type: 'login',
+          devOtp: response.data?.devOtp,
+        });
+      } else {
+        Alert.alert('Error', response.message || 'Login failed');
+      }
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message);
+      const message = error.response?.data?.message || 'Something went wrong';
+      Alert.alert('Login Failed', message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Background */}
+      <LinearGradient
+        colors={['#0D1B2A', '#1B3A4B', '#065A60']}
+        style={styles.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Decorative Elements */}
+      <View style={styles.bgDecor1} />
+      <View style={styles.bgDecor2} />
+
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="heart" size={48} color={colors.primary} />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Back Button */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Logo & Header */}
+          <Animated.View 
+            style={[
+              styles.header,
+              {
+                opacity: fadeIn,
+                transform: [{ scale: logoScale }],
+              }
+            ]}
+          >
+            <View style={styles.logoGlow} />
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={styles.brandName}>Distang</Text>
+          </Animated.View>
+
+          {/* Form Card */}
+          <Animated.View 
+            style={[
+              styles.formCard,
+              {
+                opacity: formOpacity,
+                transform: [{ translateY: slideUp }],
+              }
+            ]}
+          >
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Sign in to reconnect with your partner</Text>
+
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <View style={[
+                styles.inputWrapper,
+                focusedField === 'email' && styles.inputFocused,
+                error && styles.inputError,
+              ]}>
+                <View style={[styles.iconWrap, { backgroundColor: 'rgba(20, 184, 166, 0.15)' }]}>
+                  <Ionicons name="mail" size={20} color="#2DD4BF" />
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    setError(null);
+                  }}
+                  placeholder="you@email.com"
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
+                />
+              </View>
+              {error && (
+                <View style={styles.errorRow}>
+                  <Ionicons name="alert-circle" size={14} color="#F87171" />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Sign In Button */}
+            <TouchableOpacity
+              style={[styles.signInBtn, loading && styles.signInBtnDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={loading ? ['#6B7280', '#6B7280'] : ['#14B8A6', '#0D9488']}
+                style={styles.signInBtnGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.signInBtnText}>Continue with Email</Text>
+                    <Ionicons name="arrow-forward" size={20} color="white" />
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Info */}
+            <View style={styles.infoRow}>
+              <Ionicons name="shield-checkmark" size={16} color="rgba(255,255,255,0.4)" />
+              <Text style={styles.infoText}>
+                We'll send you a verification code
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Don't have an account?</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.footerLink}>Create one</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to connect with your partner</Text>
-        </View>
-
-        {/* Login Method Toggle */}
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggle, loginMethod === 'email' && styles.toggleActive]}
-            onPress={() => setLoginMethod('email')}
-          >
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={loginMethod === 'email' ? colors.textInverse : colors.text}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                loginMethod === 'email' && styles.toggleTextActive,
-              ]}
-            >
-              Email
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.toggle, loginMethod === 'phone' && styles.toggleActive]}
-            onPress={() => setLoginMethod('phone')}
-          >
-            <Ionicons
-              name="call-outline"
-              size={20}
-              color={loginMethod === 'phone' ? colors.textInverse : colors.text}
-            />
-            <Text
-              style={[
-                styles.toggleText,
-                loginMethod === 'phone' && styles.toggleTextActive,
-              ]}
-            >
-              Phone
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Form */}
-        <View style={styles.form}>
-          {loginMethod === 'email' ? (
-            <Input
-              label="Email"
-              placeholder="your@email.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              leftIcon="mail-outline"
-              error={errors.email}
-            />
-          ) : (
-            <Input
-              label="Phone Number"
-              placeholder="+1 234 567 8900"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              leftIcon="call-outline"
-              error={errors.phone}
-            />
-          )}
-
-          <Input
-            label="Password"
-            placeholder="Enter your password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-            leftIcon="lock-closed-outline"
-            error={errors.password}
-          />
-
-          <Button
-            title="Sign In"
-            onPress={handleLogin}
-            loading={isLoading}
-            style={styles.button}
-          />
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account?</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.footerLink}>Create one</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#0D1B2A',
+  },
+  gradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgDecor1: {
+    position: 'absolute',
+    top: -100,
+    right: -100,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(20, 184, 166, 0.08)',
+  },
+  bgDecor2: {
+    position: 'absolute',
+    bottom: 50,
+    left: -80,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(99, 102, 241, 0.06)',
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.lg,
-    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: Platform.OS === 'ios' ? 60 : spacing.xl,
+    paddingBottom: spacing['2xl'],
   },
-  header: {
+
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+
+  header: {
+    alignItems: 'center',
+    marginBottom: spacing['2xl'],
+  },
+  logoGlow: {
+    position: 'absolute',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(20, 184, 166, 0.3)',
     marginBottom: spacing.md,
   },
+  logoImage: {
+    width: 60,
+    height: 60,
+  },
+  brandName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+
+  formCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: borderRadius['2xl'],
+    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: spacing.xl,
+  },
   title: {
-    fontSize: typography.fontSize['3xl'],
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text,
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
     marginBottom: spacing.xs,
   },
   subtitle: {
     fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginBottom: spacing.xl,
   },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 4,
+
+  inputGroup: {
+    gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  toggle: {
+  label: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: borderRadius.lg,
+    paddingRight: spacing.md,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  inputFocused: {
+    borderColor: '#14B8A6',
+    backgroundColor: 'rgba(20, 184, 166, 0.08)',
+  },
+  inputError: {
+    borderColor: '#F87171',
+    backgroundColor: 'rgba(248, 113, 113, 0.08)',
+  },
+  iconWrap: {
+    width: 48,
+    height: 52,
+    borderTopLeftRadius: borderRadius.lg - 2,
+    borderBottomLeftRadius: borderRadius.lg - 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  input: {
     flex: 1,
+    fontSize: typography.fontSize.base,
+    color: '#FFFFFF',
+    paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  errorText: {
+    fontSize: typography.fontSize.xs,
+    color: '#F87171',
+  },
+
+  signInBtn: {
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  signInBtnDisabled: {
+    shadowOpacity: 0,
+  },
+  signInBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+  },
+  signInBtnText: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '700',
+    color: 'white',
+  },
+
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
   },
-  toggleActive: {
-    backgroundColor: colors.primary,
+  infoText: {
+    fontSize: typography.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
-  toggleText: {
-    fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.medium,
-    color: colors.text,
-  },
-  toggleTextActive: {
-    color: colors.textInverse,
-  },
-  form: {
-    marginBottom: spacing.lg,
-  },
-  button: {
-    marginTop: spacing.md,
-  },
+
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -256,14 +470,13 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   footerLink: {
     fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.primary,
+    fontWeight: '700',
+    color: '#14B8A6',
   },
 });
 
 export default LoginScreen;
-

@@ -11,15 +11,18 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { authApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
-import { colors, typography, spacing, borderRadius } from '../utils/theme';
+import { typography, spacing, borderRadius } from '../utils/theme';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 type RootStackParamList = {
   OTPVerify: {
@@ -47,6 +50,62 @@ export const OTPVerifyScreen: React.FC = () => {
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
+  // Animations
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(40)).current;
+  const iconBounce = useRef(new Animated.Value(0)).current;
+  const shake = useRef(new Animated.Value(0)).current;
+  const inputAnimations = useRef(
+    Array(6).fill(0).map(() => new Animated.Value(0))
+  ).current;
+
+  useEffect(() => {
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideUp, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Icon bounce
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(iconBounce, {
+          toValue: -8,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(iconBounce, {
+          toValue: 0,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Staggered input animations
+    Animated.stagger(80, 
+      inputAnimations.map(anim => 
+        Animated.spring(anim, { 
+          toValue: 1, 
+          tension: 60, 
+          friction: 8, 
+          useNativeDriver: true 
+        })
+      )
+    ).start();
+  }, []);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setResendTimer((prev) => {
@@ -62,9 +121,18 @@ export const OTPVerifyScreen: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shake, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shake, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
   const handleOtpChange = (value: string, index: number) => {
     if (value.length > 1) {
-      // Handle paste
       const digits = value.replace(/\D/g, '').slice(0, 6).split('');
       const newOtp = [...otp];
       digits.forEach((digit, i) => {
@@ -95,6 +163,7 @@ export const OTPVerifyScreen: React.FC = () => {
   const handleVerify = async () => {
     const otpString = otp.join('');
     if (otpString.length !== 6) {
+      triggerShake();
       Alert.alert('Error', 'Please enter the complete 6-digit code');
       return;
     }
@@ -120,9 +189,8 @@ export const OTPVerifyScreen: React.FC = () => {
 
       if (response.success && response.data) {
         setUser(response.data.user);
-        await setToken(response.data.token); // Must await to ensure token is saved before navigation
+        await setToken(response.data.token);
         
-        // Navigate based on profile completion
         if (type === 'signup' || !response.data.user.isProfileComplete) {
           navigation.reset({
             index: 0,
@@ -135,9 +203,11 @@ export const OTPVerifyScreen: React.FC = () => {
           });
         }
       } else {
+        triggerShake();
         Alert.alert('Error', response.message || 'Verification failed');
       }
     } catch (error: any) {
+      triggerShake();
       const message = error.response?.data?.message || 'Verification failed';
       Alert.alert('Error', message);
     } finally {
@@ -163,85 +233,157 @@ export const OTPVerifyScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
+      
+      {/* Background */}
+      <LinearGradient
+        colors={['#0D1B2A', '#1B3A4B', '#065A60']}
+        style={styles.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Decorative Elements */}
+      <View style={styles.bgDecor1} />
+      <View style={styles.bgDecor2} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <Animated.View 
+          style={[
+            styles.header,
+            { opacity: fadeIn }
+          ]}
+        >
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => navigation.goBack()}
           >
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
         {/* Content */}
-        <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="mail-open" size={48} color={colors.primary} />
-          </View>
+        <Animated.View 
+          style={[
+            styles.content,
+            {
+              opacity: fadeIn,
+              transform: [{ translateY: slideUp }],
+            }
+          ]}
+        >
+          {/* Icon */}
+          <Animated.View 
+            style={[
+              styles.iconContainer,
+              { transform: [{ translateY: iconBounce }] }
+            ]}
+          >
+            <View style={styles.iconGlow} />
+            <LinearGradient
+              colors={['#14B8A6', '#0D9488']}
+              style={styles.iconGradient}
+            >
+              <Ionicons name="mail-open" size={40} color="white" />
+            </LinearGradient>
+          </Animated.View>
 
-          <Text style={styles.title}>Verify Email</Text>
+          <Text style={styles.title}>Check Your Email</Text>
           <Text style={styles.subtitle}>
-            Enter the 6-digit code sent to{'\n'}
-            <Text style={styles.email}>{email}</Text>
+            We sent a 6-digit code to{'\n'}
+            <Text style={styles.emailHighlight}>{email}</Text>
           </Text>
           
           {/* Dev mode OTP display */}
           {devOtp && (
             <View style={styles.devOtpContainer}>
-              <Text style={styles.devOtpLabel}>🔧 DEV MODE</Text>
+              <Ionicons name="construct" size={16} color="#FBBF24" />
+              <Text style={styles.devOtpLabel}>DEV MODE</Text>
               <Text style={styles.devOtpCode}>{devOtp}</Text>
             </View>
           )}
 
           {/* OTP Input */}
-          <View style={styles.otpContainer}>
+          <Animated.View 
+            style={[
+              styles.otpContainer,
+              { transform: [{ translateX: shake }] }
+            ]}
+          >
             {otp.map((digit, index) => (
-              <TextInput
+              <Animated.View
                 key={index}
-                ref={(ref) => (inputRefs.current[index] = ref)}
-                style={[styles.otpInput, digit && styles.otpInputFilled]}
-                value={digit}
-                onChangeText={(value) => handleOtpChange(value, index)}
-                onKeyPress={(e) => handleKeyPress(e, index)}
-                keyboardType="number-pad"
-                maxLength={6}
-                selectTextOnFocus
-                autoFocus={index === 0}
-              />
+                style={{
+                  opacity: inputAnimations[index],
+                  transform: [{
+                    scale: inputAnimations[index].interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.5, 1],
+                    })
+                  }]
+                }}
+              >
+                <TextInput
+                  ref={(ref) => (inputRefs.current[index] = ref)}
+                  style={[styles.otpInput, digit && styles.otpInputFilled]}
+                  value={digit}
+                  onChangeText={(value) => handleOtpChange(value, index)}
+                  onKeyPress={(e) => handleKeyPress(e, index)}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  selectTextOnFocus
+                  autoFocus={index === 0}
+                />
+              </Animated.View>
             ))}
-          </View>
+          </Animated.View>
 
           {/* Resend */}
           <View style={styles.resendContainer}>
             {canResend ? (
               <TouchableOpacity onPress={handleResend}>
-                <Text style={styles.resendText}>Resend Code</Text>
+                <View style={styles.resendBtn}>
+                  <Ionicons name="refresh" size={16} color="#14B8A6" />
+                  <Text style={styles.resendText}>Resend Code</Text>
+                </View>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.timerText}>
-                Resend in {resendTimer}s
-              </Text>
+              <View style={styles.timerContainer}>
+                <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.4)" />
+                <Text style={styles.timerText}>
+                  Resend in {resendTimer}s
+                </Text>
+              </View>
             )}
           </View>
-        </View>
+        </Animated.View>
 
         {/* Verify Button */}
         <TouchableOpacity
           style={[styles.verifyBtn, loading && styles.verifyBtnDisabled]}
           onPress={handleVerify}
           disabled={loading}
+          activeOpacity={0.9}
         >
-          {loading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.verifyBtnText}>Verify & Continue</Text>
-          )}
+          <LinearGradient
+            colors={loading ? ['#6B7280', '#6B7280'] : ['#14B8A6', '#0D9488']}
+            style={styles.verifyBtnGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <>
+                <Text style={styles.verifyBtnText}>Verify & Continue</Text>
+                <Ionicons name="checkmark-circle" size={20} color="white" />
+              </>
+            )}
+          </LinearGradient>
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </View>
@@ -251,7 +393,28 @@ export const OTPVerifyScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#0D1B2A',
+  },
+  gradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgDecor1: {
+    position: 'absolute',
+    top: -80,
+    right: -80,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(20, 184, 166, 0.08)',
+  },
+  bgDecor2: {
+    position: 'absolute',
+    bottom: 200,
+    left: -60,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(236, 72, 153, 0.06)',
   },
   keyboardView: {
     flex: 1,
@@ -264,111 +427,151 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.backgroundAlt,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
 
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: spacing['3xl'],
   },
   iconContainer: {
+    marginBottom: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconGlow: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(20, 184, 166, 0.2)',
+  },
+  iconGradient: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.lg,
   },
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: colors.text,
+    color: '#FFFFFF',
     marginBottom: spacing.sm,
   },
   subtitle: {
     fontSize: typography.fontSize.base,
-    color: colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: spacing.lg,
   },
-  email: {
-    color: colors.primary,
+  emailHighlight: {
+    color: '#14B8A6',
     fontWeight: '600',
   },
+
   devOtpContainer: {
-    backgroundColor: '#FFF3E0',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginTop: spacing.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FF9800',
-    borderStyle: 'dashed',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.3)',
   },
   devOtpLabel: {
     fontSize: typography.fontSize.xs,
-    color: '#E65100',
+    color: '#FBBF24',
     fontWeight: '700',
-    marginBottom: spacing.xs,
   },
   devOtpCode: {
-    fontSize: 28,
+    fontSize: typography.fontSize.lg,
     fontWeight: '800',
-    color: '#E65100',
-    letterSpacing: 6,
+    color: '#FBBF24',
+    letterSpacing: 4,
   },
 
   otpContainer: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.xl,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
   },
   otpInput: {
     width: (width - spacing.xl * 2 - spacing.sm * 5) / 6,
     height: 56,
     borderRadius: borderRadius.lg,
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
-    color: colors.text,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    color: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   otpInputFilled: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
+    borderColor: '#14B8A6',
+    backgroundColor: 'rgba(20, 184, 166, 0.15)',
   },
 
   resendContainer: {
-    marginTop: spacing.md,
+    alignItems: 'center',
+  },
+  resendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+    borderRadius: borderRadius.lg,
   },
   resendText: {
     fontSize: typography.fontSize.base,
-    color: colors.primary,
+    color: '#14B8A6',
     fontWeight: '600',
+  },
+  timerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   timerText: {
     fontSize: typography.fontSize.base,
-    color: colors.textMuted,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
 
   verifyBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.lg,
     borderRadius: borderRadius.xl,
-    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#14B8A6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
   verifyBtnDisabled: {
-    opacity: 0.7,
+    shadowOpacity: 0,
+  },
+  verifyBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
   },
   verifyBtnText: {
     fontSize: typography.fontSize.lg,
@@ -378,4 +581,3 @@ const styles = StyleSheet.create({
 });
 
 export default OTPVerifyScreen;
-

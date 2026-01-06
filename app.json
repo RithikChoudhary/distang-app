@@ -8,7 +8,7 @@
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
-      "backgroundColor": "#1a1a2e",
+      "backgroundColor": "#0D1B2A",
       "resizeMode": "contain"
     },
     "assetBundlePatterns": [
@@ -41,7 +41,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1a1a2e"
+        "backgroundColor": "#0D1B2A"
       },
       "config": {
         "googleMaps": {
