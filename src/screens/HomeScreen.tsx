@@ -16,6 +16,7 @@ import {
   PanResponder,
   TextInput,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -576,11 +577,18 @@ export const HomeScreen: React.FC = () => {
       setRecording(null);
       
       if (uri) {
-        await walkieApi.sendVoiceMessage(uri, 0);
-        Vibration.vibrate([50, 50, 50]);
+        console.log('📤 Sending voice message...');
+        const response = await walkieApi.sendVoiceMessage(uri, 0);
+        if (response.success) {
+          Vibration.vibrate([50, 50, 50]);
+        } else {
+          Alert.alert('Error', response.message || 'Failed to send voice message');
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log('Stop recording error:', error);
+      const message = error.response?.data?.message || 'Failed to send voice message';
+      Alert.alert('Error', message);
     }
   };
 

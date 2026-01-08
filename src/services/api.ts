@@ -84,6 +84,8 @@ const createApiClient = (): AxiosInstance => {
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        console.log('⚠️ No auth token found for request:', config.url);
       }
       return config;
     },
