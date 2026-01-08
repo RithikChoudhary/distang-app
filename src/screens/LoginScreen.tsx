@@ -103,7 +103,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
 
     setLoading(true);
     try {
-      const response = await authApi.loginInit(email.trim().toLowerCase());
+      const response = await authApi.loginInit({ email: email.trim().toLowerCase() });
       
       if (response.success) {
         navigation.navigate('OTPVerify', {

@@ -79,7 +79,7 @@ export interface SignupVerifyPayload {
 
 export interface LoginInitPayload {
   email: string;
-  username: string;
+  username?: string; // Optional - can login with just email
 }
 
 export interface LoginVerifyPayload {
