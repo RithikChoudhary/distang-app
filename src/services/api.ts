@@ -122,7 +122,15 @@ const api = createApiClient();
  * Token management
  */
 export const setToken = async (token: string): Promise<void> => {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  console.log('💾 Saving token to SecureStore...', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    // Verify it was saved
+    const saved = await SecureStore.getItemAsync(TOKEN_KEY);
+    console.log('✅ Token saved successfully:', saved ? 'Yes' : 'No');
+  } catch (error) {
+    console.error('❌ Failed to save token:', error);
+  }
 };
 
 export const getToken = async (): Promise<string | null> => {
@@ -159,8 +167,12 @@ export const authApi = {
 
   loginVerify: async (payload: LoginVerifyPayload): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/login/verify', payload);
+    console.log('📡 loginVerify raw response.data:', JSON.stringify(response.data, null, 2));
     if (response.data.data?.token) {
+      console.log('💾 Token found in API response, saving...');
       await setToken(response.data.data.token);
+    } else {
+      console.log('⚠️ No token found in response.data.data');
     }
     return response.data;
   },

@@ -187,7 +187,10 @@ export const OTPVerifyScreen: React.FC = () => {
         });
       }
 
+      console.log('🔐 Login response:', JSON.stringify(response, null, 2));
+      
       if (response.success && response.data) {
+        console.log('🔑 Token received:', response.data.token ? 'Yes' : 'No');
         setUser(response.data.user);
         await setToken(response.data.token);
         
