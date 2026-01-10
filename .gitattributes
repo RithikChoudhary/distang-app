@@ -1,0 +1,10 @@
+# Treat PNG files as binary (prevent UTF-8 BOM corruption)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+
+# Keep line endings consistent
+* text=auto
